@@ -29,6 +29,7 @@
     "@fastify/helmet": "^13.0.2",
     "@fastify/multipart": "^9.2.1",
     "@fastify/static": "^10.1.10",
+    "@noble/hashes": "2.4.0",
     "fastify": "^5.6.2",
     "highlight.js": "^11.11.1",
     "lucide-react": "^0.468.0",

@@ -4,9 +4,9 @@ import {
   createHash,
   timingSafeEqual,
   scrypt as scryptCallback,
-  pbkdf2 as pbkdf2Callback,
 } from 'node:crypto';
 import type { Store } from './db.js';
+import { derivePasswordKey } from './password-kdf.js';
 let hashing = 0;
 const scrypt = async (
   password: string,
@@ -39,8 +39,12 @@ export const equal = (a: string, b: string) => {
     y = Buffer.from(b);
   return x.length === y.length && timingSafeEqual(x, y);
 };
-const pbkdf2 = (password: string, salt: string) => new Promise<Buffer>((resolve, reject) =>
-  pbkdf2Callback(password, salt, 600000, 32, 'sha256', (e, key) => e ? reject(e) : resolve(key)));
+async function pbkdf2(password: string, salt: string) {
+  if (hashing >= 2) throw new HttpError(429, 'Сервис авторизации занят. Повтори через несколько секунд.', 'AUTH_BUSY');
+  hashing++;
+  try { return await derivePasswordKey(password, salt); }
+  finally { hashing--; }
+}
 export async function hashPassword(password: string) {
   const salt = randomBytes(16).toString('hex');
   return `pbkdf2$600000$${salt}$${(await pbkdf2(password, salt)).toString('hex')}`;
