@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hellar-ai-cosmic",
+  "main": "dist-worker/index.js",
+  "compatibility_date": "2026-05-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "keep_vars": true,
+  "assets": {"directory":"dist","binding":"ASSETS","not_found_handling":"single-page-application","run_worker_first":true},
+  "durable_objects": {"bindings":[{"name":"HELLAR","class_name":"HellarDatabase"}]},
+  "migrations": [{"tag":"v1","new_sqlite_classes":["HellarDatabase"]}],
+  "r2_buckets": [{"binding":"FILES","bucket_name":"hellar-ai-cosmic-files"}],
+  "vars": {
+    "NODE_ENV":"production","COOKIE_SECURE":"true",
+    "CHAT_MODELS":"gpt-4.1-mini","IMAGE_MODEL":"gpt-image-1",
+    "IMAGE_SIZES":"1024x1024,1024x1536,1536x1024",
+    "CHAT_DAILY_LIMIT":"100","IMAGE_DAILY_LIMIT":"10",
+    "GLOBAL_CHAT_DAILY_LIMIT":"1000","GLOBAL_IMAGE_DAILY_LIMIT":"100"
+  },
+  "observability": {"enabled":false}
+}

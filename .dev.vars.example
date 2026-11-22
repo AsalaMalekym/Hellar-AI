@@ -1,0 +1,6 @@
+APP_ORIGIN=http://localhost:8787
+NODE_ENV=development
+COOKIE_SECURE=false
+# Generate a private value with: node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+SETUP_TOKEN=
+OPENAI_API_KEY=

@@ -1,0 +1,16 @@
+CREATE TABLE users(id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,name TEXT NOT NULL,password_hash TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('admin','user')),blocked INTEGER NOT NULL DEFAULT 0,avatar_key TEXT,settings TEXT NOT NULL DEFAULT '{}',created_at INTEGER NOT NULL);
+CREATE TABLE invitations(id TEXT PRIMARY KEY,token_hash TEXT NOT NULL UNIQUE,label TEXT NOT NULL,created_by TEXT REFERENCES users(id) ON DELETE SET NULL,created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,used_by TEXT REFERENCES users(id) ON DELETE SET NULL,used_at INTEGER,revoked INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE sessions(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,token_hash TEXT NOT NULL UNIQUE,csrf TEXT NOT NULL,created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,user_agent TEXT NOT NULL);
+CREATE INDEX sessions_user ON sessions(user_id);
+CREATE TABLE password_resets(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,token_hash TEXT NOT NULL UNIQUE,expires_at INTEGER NOT NULL,used_at INTEGER);
+CREATE TABLE chats(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,title TEXT NOT NULL,model TEXT NOT NULL,system_prompt TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
+CREATE INDEX chats_owner_updated ON chats(user_id,updated_at);
+CREATE TABLE messages(id TEXT PRIMARY KEY,chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,role TEXT NOT NULL CHECK(role IN ('user','assistant')),content TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'complete',created_at INTEGER NOT NULL);
+CREATE INDEX messages_chat ON messages(chat_id,created_at);
+CREATE TABLE image_jobs(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,prompt TEXT NOT NULL,model TEXT NOT NULL,size TEXT NOT NULL,status TEXT NOT NULL,error TEXT,file_key TEXT,width INTEGER,height INTEGER,created_at INTEGER NOT NULL);
+CREATE INDEX images_owner_created ON image_jobs(user_id,created_at);
+CREATE TABLE usage(user_id TEXT NOT NULL,kind TEXT NOT NULL,day TEXT NOT NULL,count INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(user_id,kind,day));
+CREATE TABLE rate_limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,expires_at INTEGER NOT NULL);
+CREATE TABLE generation_locks(key TEXT PRIMARY KEY,expires_at INTEGER NOT NULL);
+CREATE TABLE file_gc(key TEXT PRIMARY KEY,created_at INTEGER NOT NULL);
+CREATE TABLE audit(id TEXT PRIMARY KEY,actor_id TEXT,action TEXT NOT NULL,target_id TEXT,created_at INTEGER NOT NULL);

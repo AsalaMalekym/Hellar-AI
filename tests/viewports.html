@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Hellar · проверка мобильной вёрстки</title>
+    <style>
+      body {
+        background: #080414;
+        color: #d9c6ff;
+        margin: 16px;
+        font: 14px system-ui;
+      }
+      nav {
+        display: flex;
+        gap: 15px;
+        padding: 5px 0 16px;
+      }
+      a {
+        color: #d9c6ff;
+      }
+      main {
+        display: flex;
+        gap: 16px;
+        align-items: start;
+      }
+      iframe {
+        display: block;
+        border: 1px solid #8650f566;
+        height: 820px;
+        border-radius: 12px;
+        background: #080414;
+      }
+      h2 {
+        font-size: 13px;
+        font-weight: 400;
+      }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <a href="?route=/">Главная</a><a href="?route=/login">Вход</a
+      ><a href="?route=/register">Регистрация</a><a href="?route=/chat">Чат</a
+      ><a href="?route=/images">Изображения</a><a href="?route=/account">Кабинет</a
+      ><a href="?route=/admin">Админ</a>
+    </nav>
+    <main id="frames"></main>
+    <script>
+      const route = new URLSearchParams(location.search).get('route') || '/';
+      const requestedWidth = Number(new URLSearchParams(location.search).get('width'));
+      for (const width of [360, 390, 412, 430].includes(requestedWidth)
+        ? [requestedWidth]
+        : [360, 390, 412, 430]) {
+        const box = document.createElement('section');
+        const title = document.createElement('h2');
+        title.textContent = width + ' px';
+        const iframe = document.createElement('iframe');
+        iframe.id = 'frame-' + width;
+        iframe.title = 'Экран ' + width;
+        iframe.width = width;
+        iframe.src = new URLSearchParams(location.search).has('live')
+          ? route
+          : '/tests/qa.html?route=' + encodeURIComponent(route);
+        box.append(title, iframe);
+        document.getElementById('frames').append(box);
+      }
+    </script>
+  </body>
+</html>

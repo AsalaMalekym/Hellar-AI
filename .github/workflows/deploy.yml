@@ -1,0 +1,47 @@
+name: Deploy Hellar to Cloudflare
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: hellar-cloudflare-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      HELLAR_APP_ORIGIN: ${{ vars.HELLAR_APP_ORIGIN }}
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Check deployment settings
+        run: |
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Set CLOUDFLARE_ACCOUNT_ID in GitHub Secrets'; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Set CLOUDFLARE_API_TOKEN in GitHub Secrets'; exit 1; }
+          test -n "$HELLAR_APP_ORIGIN" || { echo 'Set HELLAR_APP_ORIGIN in GitHub Variables'; exit 1; }
+          node -e 'const v=process.env.HELLAR_APP_ORIGIN; if(new URL(v).origin!==v || !v.startsWith("https://")) throw Error("Origin must be HTTPS without a trailing slash")'
+      - run: npm ci
+      - run: npm test
+      - run: npm run build:cloudflare
+      - run: npm run test:cloudflare
+      - name: Ensure dedicated R2 bucket exists
+        run: node scripts/ensure-cloudflare.mjs
+      - name: Deploy site and database namespace
+        run: npx wrangler deploy --var "APP_ORIGIN:$HELLAR_APP_ORIGIN"
+      - name: Install application secrets if supplied
+        env:
+          SETUP_TOKEN: ${{ secrets.HELLAR_SETUP_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: node scripts/cloudflare-secrets.mjs
+      - name: Check deployed health
+        run: |
+          curl --fail --silent --show-error --retry 3 "$HELLAR_APP_ORIGIN/api/health"
