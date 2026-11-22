@@ -17,7 +17,7 @@ const legacyPrices: Record<string, Price> = {
   'gpt-image-1': { input: 5, cached: 1.25, output: 40 },
 };
 export function billingConfig(env: Record<string, string | undefined> = process.env) {
-  const rawFx = env.BILLING_RUB_PER_USD || '';
+  const rawFx = env.BILLING_RUB_PER_USD || '100';
   if (rawFx && !/^\d{1,4}(\.\d{1,2})?$/.test(rawFx)) throw Error('Invalid BILLING_RUB_PER_USD');
   const fxKopecks = rawFx ? Math.round(Number(rawFx) * 100) : 0;
   if (rawFx && (fxKopecks < 100 || fxKopecks > 100000)) throw Error('Invalid BILLING_RUB_PER_USD');

@@ -19,7 +19,7 @@ export function paymentReady(s: Services) {
     return false;
   return !!(
     s.c.key &&
-    b.enabled &&
+    (b.enabled || b.test) &&
     b.fxKopecks &&
     b.merchant &&
     (b.test ? b.testPassword1 && b.testPassword2 : b.password1 && b.password2)

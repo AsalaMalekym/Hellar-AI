@@ -251,3 +251,28 @@ test('billable failures: rejected requests release credit; unknown streamed usag
  assert.equal((await a.request('POST',`/admin/billing/${hold.id}/resolve`,{providerCostMicro:0,note:'Повтор того же возврата резерва'})).statusCode,409);
  assert.equal(wallet(s,f.admin).balance,MICRO);
 });
+
+test('admin can test SBP with billing off while chat stays available and real checkout stays closed', async t => {
+ const f = await fixture({key:'test-only',billing:{...cfg(),enabled:false,test:true}}, {ai:{
+  ready:true, async *stream(){yield 'Работает без списания';}, async image(){throw Error('unused');}
+ }});
+ t.after(()=>f.close());const a=f.client();await a.login();
+ assert.equal(billingConfig({}).fxKopecks,10000);
+ const before=(await a.request('GET','/billing')).json();
+ assert.equal(before.enabled,false);assert.equal(before.paymentsReady,true);assert.equal(before.planRubKopecks,120000);
+ const result=await a.request('POST','/billing/topup',{rubKopecks:120000,requestKey:crypto.randomUUID()});
+ assert.equal(result.statusCode,200,result.body);
+ const order=f.db.get('SELECT * FROM payment_orders WHERE id=?',result.json().orderId);
+ paid({db:f.db,c:f.c} as Services,notification(order,{},true));
+ assert.equal((await a.request('GET','/billing')).json().wallet,0);
+ assert.equal((await a.request('POST','/billing/subscribe',{})).statusCode,503);
+ const member=f.client();await member.register();
+ assert.equal((await member.request('GET','/billing')).json().paymentsReady,false);
+ assert.equal((await member.request('POST','/billing/topup',{rubKopecks:120000,requestKey:crypto.randomUUID()})).statusCode,503);
+ const chat=(await member.request('POST','/chats',{})).json().chat;
+ const generated=await member.request('POST','/chats/'+chat.id+'/generate',{content:'Привет'});
+ assert.equal(generated.statusCode,200,generated.body);assert.match(generated.body,/event: done/);
+ assert.equal(f.db.get('SELECT COUNT(*) n FROM billing_holds').n,0);
+ f.c.billing.test=false;
+ assert.equal((await a.request('POST','/billing/topup',{rubKopecks:120000,requestKey:crypto.randomUUID()})).statusCode,503);
+});
