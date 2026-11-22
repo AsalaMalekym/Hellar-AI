@@ -134,7 +134,7 @@ test('subscription and reservations: month, priority, concurrency, expiry, missi
   settle(s, h, { input: 1000, cached: 500, output: 1000 });
   assert.equal(summary(s, f.admin).plan!.remaining, 12 * MICRO - 3700);
   const h2 = reserve(s, f.admin, 'chat', 'gpt-4.1-mini', 15 * MICRO)!;
-  assert.throws(() => reserve(s, f.admin, 'image', 'gpt-image-1', 10 * MICRO), /Недостаточно/);
+  assert.throws(() => reserve(s, f.admin, 'image', 'gpt-image-2.5-flare', 10 * MICRO), /Недостаточно/);
   assert.ok(wallet(s, f.admin).balance >= 0);
   f.db.run('UPDATE subscriptions SET expires_at=? WHERE user_id=?', Date.now() - 1, f.admin);
   settle(s, h2, null, true);
@@ -275,4 +275,68 @@ test('admin can test SBP with billing off while chat stays available and real ch
  assert.equal(f.db.get('SELECT COUNT(*) n FROM billing_holds').n,0);
  f.c.billing.test=false;
  assert.equal((await a.request('POST','/billing/topup',{rubKopecks:120000,requestKey:crypto.randomUUID()})).statusCode,503);
+});
+
+test('request counters track both generators and funding sources, not attempts or deleted history', async t => {
+ const f = await fixture({key:'test-only',billing:cfg()}); t.after(()=>f.close());
+ const s = {db:f.db,c:f.c} as Services;
+ wallet(s,f.admin);f.db.run('UPDATE wallets SET balance=? WHERE user_id=?',20*MICRO,f.admin);
+ const a=f.client();await a.login();
+ const get=async()=> (await a.request('GET','/billing')).json();
+ let data=await get();
+ assert.equal(data.requests.per100Rub,250);
+ assert.equal(data.requests.planEstimate,3000);
+ assert.equal(data.requests.wallet.remainingEstimate,5000);
+ const chatUsage={input:1000,cached:0,output:1000};
+ const h=reserve(s,f.admin,'chat','gpt-4.1-mini',10000)!;
+ assert.equal((await get()).requests.totalUsed,0);
+ settle(s,h,chatUsage);settle(s,h,chatUsage);
+ assert.deepEqual((await get()).requests.wallet,{used:1,chat:1,image:0,remainingEstimate:4999});
+ const image=reserve(s,f.admin,'image',f.c.imageModel,50000)!;
+ settle(s,image,{input:100,cached:0,output:250});
+ data=await get();
+ assert.equal(data.requests.wallet.used,2);assert.equal(data.requests.wallet.image,1);
+ assert.equal(data.requests.wallet.remainingEstimate,4995);
+ const rejected=reserve(s,f.admin,'image',f.c.imageModel,50000)!;
+ settle(s,rejected,null,true);
+ assert.equal((await get()).requests.totalUsed,2);
+ const unknown=reserve(s,f.admin,'chat','gpt-4.1-mini',10000)!;
+ settle(s,unknown,null);
+ assert.equal((await get()).requests.totalUsed,2);
+ settle(s,unknown,null,false,{cost:0,note:'Verified no charge'});
+ subscribe(s,f.admin);
+ const p=reserve(s,f.admin,'chat','gpt-4.1-mini',10000)!;
+ settle(s,p,chatUsage);
+ const pi=reserve(s,f.admin,'image',f.c.imageModel,50000)!;
+ settle(s,pi,{input:100,cached:0,output:250});
+ data=await get();
+ assert.deepEqual(data.requests.plan,{used:2,chat:1,image:1,remainingEstimate:2995});
+ assert.equal(data.requests.wallet.used,2);assert.equal(data.requests.totalUsed,4);
+ // The reserve may touch the wallet even when actual cost comes entirely from the plan.
+ f.db.run('UPDATE subscriptions SET remaining=5000 WHERE user_id=?',f.admin);
+ const reserveBoth=reserve(s,f.admin,'chat','gpt-4.1-mini',10000)!;
+ settle(s,reserveBoth,chatUsage);
+ assert.equal((await get()).requests.wallet.used,2);
+ const split=reserve(s,f.admin,'chat','gpt-4.1-mini',10000)!;
+ settle(s,split,chatUsage);
+ data=await get();
+ assert.equal(data.requests.wallet.used,3);assert.equal(data.requests.plan.used,4);
+ assert.equal(data.requests.totalUsed,6);assert.equal(data.requests.plan.remainingEstimate,0);
+ // A new month has fresh package counters; the all-time wallet counters persist.
+ f.db.run('UPDATE subscriptions SET expires_at=? WHERE user_id=?',Date.now()-1,f.admin);
+ f.db.run('UPDATE wallets SET balance=? WHERE user_id=?',20*MICRO,f.admin);
+ subscribe(s,f.admin);
+ data=await get();assert.equal(data.requests.plan.used,0);assert.equal(data.requests.plan.remainingEstimate,3000);
+ assert.equal(data.requests.wallet.used,3);
+ f.db.run('DELETE FROM billing_ledger WHERE user_id=?',f.admin);
+ assert.equal((await get()).requests.totalUsed,6);
+ const other=f.client();await other.register();
+ assert.equal((await other.request('GET','/billing')).json().requests.totalUsed,0);
+ // Quotes follow actual configured pricing and exchange rate, never a hard-coded quota.
+ f.c.billing.fxKopecks=20000;
+ assert.equal((await get()).requests.per100Rub,125);
+ f.c.billing.prices['gpt-4.1-mini']={input:0.8,cached:0.2,output:3.2};
+ assert.equal((await get()).requests.per100Rub,62);
+ delete f.c.billing.prices['gpt-4.1-mini'];
+ assert.equal((await get()).requests.wallet.remainingEstimate,null);
 });

@@ -19,6 +19,7 @@ import { api, post, patch, remove, csrfHeaders } from '../api';
 import { useApp } from '../context';
 import { Button, ErrorBox, Empty, Loading, Modal } from '../components/ui';
 import Markdown from '../components/Markdown';
+import RequestBalance from '../components/RequestBalance';
 import { readEvents } from '../stream';
 type ChatRow = { id: string; title: string; model: string; system_prompt: string };
 type Message = { id: string; role: 'user' | 'assistant'; content: string; status: string };
@@ -364,6 +365,7 @@ export default function Chat() {
           )}
         </div>
         <div className="composer-area">
+          <RequestBalance generating={busy} />
           <ErrorBox message={error} />
           {status && !status.chatReady && (
             <div className="setup-notice">

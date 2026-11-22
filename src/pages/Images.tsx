@@ -12,6 +12,7 @@ import {
 import { api, post, remove } from '../api';
 import { useApp } from '../context';
 import { Button, Empty, ErrorBox, Loading, Modal } from '../components/ui';
+import RequestBalance from '../components/RequestBalance';
 type Job = {
   id: string;
   prompt: string;
@@ -108,6 +109,7 @@ export default function Images() {
       </div>
       <div className="studio-grid">
         <aside className="glass section-card studio-controls">
+          <RequestBalance generating={busy} />
           <h2>
             <Sparkles size={20} /> Твоя идея
           </h2>

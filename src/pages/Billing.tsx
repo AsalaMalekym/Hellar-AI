@@ -4,6 +4,7 @@ import { Wallet, Sparkles, RefreshCw } from 'lucide-react';
 import { api, post } from '../api';
 import { useApp } from '../context';
 import { Button, ErrorBox, Loading } from '../components/ui';
+import { RequestStats, requestNumber } from '../components/RequestStats';
 const credits = (micro: number) =>
   (micro / 1e6).toLocaleString('ru-RU', { maximumFractionDigits: 6 });
 const rub = (kopecks: number) =>
@@ -103,6 +104,21 @@ export default function Billing() {
               подписку.
             </div>
           )}
+          <div className="glass section-card request-guide">
+            <h2>Сколько запросов хватит сделать</h2>
+            <p className="billing-number">100 ₽ ≈ {requestNumber(data.requests.per100Rub)} <span>текстовых запросов</span></p>
+            <p className="muted">
+              Ориентир для {data.requests.model}: 1 000 токенов на входе с учётом истории
+              и 1 000 токенов в ответе, без кеша. Реальное количество зависит от длины диалога.
+            </p>
+            <p>Текст и картинки расходуют одни и те же кредиты. После любой генерации остаток пересчитывается по фактической стоимости.</p>
+            <p className="fine muted">
+              Использовано — число запросов с подтверждённым списанием, а не фиксированный лимит.
+              Ошибки без списания и бесплатные генерации сюда не входят. Всего оплачено запросов: {requestNumber(data.requests.totalUsed)}.
+              Если один запрос оплачен из двух источников, он учитывается в обоих счётчиках, но один раз в общем.
+              Пока расход уточняется, резерв не входит в доступный остаток. Дневные лимиты действуют отдельно.
+            </p>
+          </div>
           <div className="billing-grid">
             <article className="glass section-card">
               <h2>
@@ -114,6 +130,7 @@ export default function Billing() {
               <p className="muted">
                 Не сгорает. Расходуется после месячного пакета или без подписки.
               </p>
+              <RequestStats counts={data.requests.wallet} label="Запросы с купленного баланса за всё время" />
               {data.reserved > 0 && (
                 <p role="status">
                   Зарезервировано: {credits(data.reserved)} кредитов. Остаток вернётся после
@@ -138,7 +155,7 @@ export default function Billing() {
                   />
                 </label>
                 <div className="billing-presets">
-                  {['300', '1000', '3000'].map((value) => (
+                  {['100', '1000', '3000'].map((value) => (
                     <button
                       type="button"
                       className="btn secondary"
@@ -161,6 +178,9 @@ export default function Billing() {
                 ) : (
                   <p className="muted">Рублёвая цена появится перед запуском оплаты.</p>
                 )}
+                {data.requests.costMicro > 0 && Number.isFinite(previewRub) && previewRub >= 10000 && data.fxKopecks > 0 && (
+                  <p>Это примерно {requestNumber(Math.floor(Math.floor(previewRub * 1e6 / data.fxKopecks) / data.requests.costMicro))} текстовых запросов, если не расходовать пополнение на картинки.</p>
+                )}
                 <Button busy={busy} disabled={!data.paymentsReady}>
                   {data.test && user?.role === 'admin'
                     ? 'Проверить оплату СБП'
@@ -180,12 +200,14 @@ export default function Billing() {
                 {data.planRubKopecks ? rub(data.planRubKopecks) : '$12'} <span>/ месяц</span>
               </p>
               <p>12 кредитов в месячном пакете для чата и изображений.</p>
+              <p>Полный пакет — примерно {requestNumber(data.requests.planEstimate)} обычных текстовых запросов, если не генерировать картинки.</p>
               <p className="muted">
                 Разные модели и длина диалога расходуют пакет по-разному. Остаток пакета не
                 переносится на следующий месяц.
               </p>
               {data.plan ? (
                 <div className="stack">
+                  <RequestStats counts={data.requests.plan} label="Запросы текущего месяца подписки" />
                   <strong>
                     Осталось {credits(data.plan.remaining)} из {credits(data.plan.granted)} кредитов
                   </strong>

@@ -12,6 +12,7 @@ import Chat from '../src/pages/Chat';
 import Images from '../src/pages/Images';
 import Account from '../src/pages/Account';
 import Admin from '../src/pages/Admin';
+import Billing from '../src/pages/Billing';
 import '../src/styles.css';
 let user = {
   id: '00000000-0000-4000-8000-000000000001',
@@ -43,11 +44,22 @@ window.fetch = async (input, options) => {
       imageReady: false,
       mailReady: false,
       chatModels: ['gpt-4.1-mini'],
-      imageModel: 'gpt-image-1',
+      imageModel: 'gpt-image-2.5-flare',
       imageSizes: ['1024x1024', '1024x1536', '1536x1024'],
       limits: { chat: 100, image: 10 },
       version: 'UI test',
     };
+  else if (url === '/api/billing') data = {
+    enabled: true, test: true, paymentsReady: true, fxKopecks: 10000,
+    wallet: 900000, reserved: 0, price:12000000, allowance:12000000,
+    planRubKopecks:120000, plan:{remaining:11600000,granted:12000000,expiresAt:Date.now()+86400000*20},
+    requests:{model:'gpt-4.1-mini',costMicro:4000,per100Rub:250,planEstimate:3000,totalUsed:117,
+      wallet:{used:17,chat:15,image:2,remainingEstimate:225},
+      plan:{used:100,chat:95,image:5,remainingEstimate:2900}},
+    rates:{'gpt-4.1-mini':{input:.4,cached:.1,output:1.6},'gpt-image-2.5-flare':{input:5,cached:1.25,output:30}},
+    ledger:[],orders:[],
+  };
+  else if (url === '/api/admin/billing') data={holds:[]};
   else if (url === '/api/chats') data = { chats: [chat] };
   else if (url === '/api/chats/' + chat.id)
     data = {
@@ -124,6 +136,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="images" element={<Images />} />
             <Route path="account" element={<Account />} />
             <Route path="admin" element={<Admin />} />
+            <Route path="billing" element={<Billing />} />
           </Route>
         </Routes>
       </Provider>

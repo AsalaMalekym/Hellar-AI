@@ -2611,3 +2611,10 @@ button.text-link {
 .billing-review { padding:1rem 0; border-top:1px solid rgba(180,140,255,.2); overflow-wrap:anywhere; }
 .billing-page .notice { padding:1rem; margin-bottom:1rem; border:1px solid rgba(180,140,255,.4); border-radius:1rem; }
 @media(max-width:760px) { .billing-grid { grid-template-columns:1fr; } }
+.request-guide { margin-bottom:1.25rem; }
+.request-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr)); gap:.8rem; margin:1rem 0; }
+.request-stats > div { display:flex; flex-direction:column; gap:.4rem; padding:1rem; background:rgba(150,100,255,.09); border:1px solid rgba(180,140,255,.2); border-radius:1rem; }
+.request-stats strong { font-size:1.8rem; line-height:1.2; }
+.request-stats small { font-size:.875rem; color:var(--muted); }
+.request-balance { padding:.75rem 1rem; margin:.5rem 0; border:1px solid rgba(180,140,255,.25); border-radius:.8rem; font-size:.875rem; }
+.request-balance p { margin:.3rem 0; }

@@ -23,7 +23,11 @@ api.intercept({path:'/v1/chat/completions',method:'POST'}).reply(200,
   'data: '+JSON.stringify({choices:[{index:0,delta:{content:'Проверка потока'},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({choices:[],usage:{prompt_tokens:1000,completion_tokens:100,prompt_tokens_details:{cached_tokens:500}}})+'\n\ndata: [DONE]\n\n',
   {headers:{'content-type':'text/event-stream'}});
 const png = PNG.sync.write(new PNG({width:1024,height:1024}));
-api.intercept({path:'/v1/images/generations',method:'POST'}).reply(200,JSON.stringify({data:[{b64_json:png.toString('base64')}],usage:{input_tokens:100,output_tokens:250}}),{headers:{'content-type':'application/json'}});
+api.intercept({path:'/v1/images/generations',method:'POST'}).reply(200, async opts => {
+  const body = await new Response(opts.body).json();
+  assert.equal(body.model, 'gpt-image-2.5-flare');
+  return JSON.stringify({data:[{b64_json:png.toString('base64')}],usage:{input_tokens:100,output_tokens:250}});
+},{headers:{'content-type':'application/json'}});
 const options={modules:true,scriptPath:'dist-worker/index.js',compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],
   durableObjects:{HELLAR:{className:'HellarDatabase',useSQLite:true}},r2Buckets:['FILES'],
   durableObjectsPersist:path.join(state,'db'),r2Persist:path.join(state,'r2'),
@@ -93,8 +97,11 @@ try {
   assert.equal(generated.status,200,generated.text);
   const image=generated.data.image;
   const billing=(await b('GET','/billing')).data;
-  assert.equal(billing.plan.remaining,12000000-820-21000);
+  assert.equal(billing.plan.remaining,12000000-820-16000);
   assert.equal(billing.reserved,0);
+  assert.equal(billing.requests.per100Rub,250);
+  assert.deepEqual(billing.requests.plan,{used:2,chat:1,image:1,remainingEstimate:2995});
+  assert.equal(billing.requests.wallet.used,0);
   assert.equal(billing.ledger.length,4);
   assert.equal((await a('GET',`/images/${image.id}/file`)).status,404);
   assert.equal((await b('GET',`/images/${image.id}/file`)).headers.get('content-type'),'image/png');
@@ -111,7 +118,7 @@ try {
   await mf.dispose();mf=new Miniflare(options);
   assert.equal((await b('GET','/chats/'+chat.id)).data.messages.length,2);
   assert.equal((await b('GET',`/images/${image.id}/file`)).status,200);
-  assert.equal((await b('GET','/billing')).data.plan.remaining,12000000-820-21000);
+  assert.equal((await b('GET','/billing')).data.plan.remaining,12000000-820-16000);
   assert.equal(await (await sendCallback(callback)).text(),'OK'+inv);
   assert.equal((await b('GET','/billing')).data.wallet,0);
   console.log('Cloudflare integration passed: signed SBP callbacks without browser cookies, replay protection, subscriptions, exact token billing, durable ledger, captcha gate, verified-email registration, password reset, bootstrap, PBKDF2 login, CSRF, invitations, roles, ownership, SSE, R2 images, persistence across runtime restart. Real provider calls: 0.');

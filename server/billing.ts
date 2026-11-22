@@ -216,11 +216,38 @@ export function summary(s: Services, uid: string) {
     "SELECT COALESCE(SUM(package_reserved+wallet_reserved),0) amount FROM billing_holds WHERE user_id=? AND state IN ('reserved','review')",
     uid,
   ).amount;
+  // Counts come from settled charges, not deletable chats or the last 50 ledger rows.
+  // A request funded by both sources appears in both source counters, once in total.
+  const counts = s.db.all(
+    `SELECT kind, COUNT(*) total,
+      SUM(CASE WHEN charged > package_reserved THEN 1 ELSE 0 END) wallet,
+      SUM(CASE WHEN subscription_id=? AND package_reserved>0 THEN 1 ELSE 0 END) plan
+     FROM billing_holds WHERE user_id=? AND state='settled' AND charged>0 GROUP BY kind`,
+    plan?.id || '', uid,
+  );
+  const count = (source: string, kind: string) => Number(counts.find((row: any) => row.kind === kind)?.[source] || 0);
+  const model = s.c.chatModels[0];
+  const price = b.prices[model];
+  const standardCost = price ? cost({ input: 1000, cached: 0, output: 1000 }, price, 2) : null;
+  const estimate = (amount: number) => standardCost ? Math.floor(amount / standardCost) : null;
+  const sourceStats = (source: string, amount: number) => ({
+    used: count(source, 'chat') + count(source, 'image'),
+    chat: count(source, 'chat'), image: count(source, 'image'),
+    remainingEstimate: estimate(amount),
+  });
   return {
     enabled: b.enabled,
     fxKopecks: b.fxKopecks,
     wallet: w.balance,
     reserved,
+    requests: {
+      model, inputTokens: 1000, outputTokens: 1000, costMicro: standardCost,
+      per100Rub: b.fxKopecks ? estimate(Math.floor(10000 * MICRO / b.fxKopecks)) : null,
+      planEstimate: estimate(PLAN_ALLOWANCE),
+      totalUsed: count('total', 'chat') + count('total', 'image'),
+      wallet: sourceStats('wallet', w.balance),
+      plan: sourceStats('plan', plan?.remaining || 0),
+    },
     plan: plan
       ? { remaining: plan.remaining, granted: plan.granted, expiresAt: plan.expires_at }
       : null,

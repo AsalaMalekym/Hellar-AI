@@ -65,7 +65,7 @@ export function config(): Config {
       .split(',')
       .map((x) => x.trim())
       .filter(Boolean),
-    imageModel: process.env.IMAGE_MODEL || 'gpt-image-1',
+    imageModel: process.env.IMAGE_MODEL || 'gpt-image-2.5-flare',
     imageSizes: sizes,
     chatLimit: num(process.env.CHAT_DAILY_LIMIT, 100),
     imageLimit: num(process.env.IMAGE_DAILY_LIMIT, 10),

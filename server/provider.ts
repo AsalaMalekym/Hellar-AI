@@ -99,10 +99,22 @@ export function providerError(e: unknown, signal?: AbortSignal) {
       ? 'Время ожидания истекло. Попробуй ещё раз.'
       : 'Генерация остановлена.';
   if (e instanceof HttpError) return e.message;
-  const status = (e as { status?: number })?.status;
+  const failure = e as { status?: number; code?: string; message?: string };
+  const status = failure?.status;
+  // Classify provider errors, but never expose raw messages, prompts or credentials.
+  const code = failure?.code;
+  if (code === 'content_policy_violation' || code === 'moderation_blocked')
+    return 'Модель отклонила запрос по правилам безопасности. Попробуй изменить описание.';
+  if (code === 'model_not_found' || status === 404)
+    return 'Модель ИИ недоступна. Владелец должен проверить название модели и доступ к ней в OpenAI.';
+  if (code === 'insufficient_quota' || code === 'billing_hard_limit_reached')
+    return 'В OpenAI исчерпан баланс или платёжный лимит API. Владелец должен проверить оплату OpenAI; баланс Hellar здесь не поможет.';
+  if ((status === 400 || status === 403) && /organization.{0,80}verif|verif.{0,80}organization/i.test(failure?.message || ''))
+    return 'Для генерации изображений OpenAI требует верификацию организации владельца API-ключа.';
   if (status === 429)
     return 'Провайдер временно ограничил запросы или исчерпан его лимит. Попробуй позже.';
-  if (status === 401 || status === 403) return 'Сервис ИИ требует проверки доступа владельцем.';
+  if (status === 401) return 'OpenAI отклонил API-ключ. Владелец должен проверить ключ на сервере.';
+  if (status === 403) return 'У API-ключа нет доступа к этой операции OpenAI. Владелец должен проверить разрешения проекта и доступ к модели.';
   if (status === 400 || status === 422)
     return 'Провайдер отклонил запрос. Проверь промпт, модель и параметры.';
   return 'Сервис ИИ временно недоступен. Попробуй позже.';

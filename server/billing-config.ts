@@ -10,11 +10,11 @@ const priceSchema = z
   })
   .refine((x) => x.cached <= x.input);
 export type Price = z.infer<typeof priceSchema>;
-// Standard (not Batch/fine-tuning) legacy model rates, USD per million tokens.
+// Standard (not Batch/fine-tuning) model rates, USD per million tokens.
 // Override and re-verify against the provider's tariff before enabling sales.
-const legacyPrices: Record<string, Price> = {
+const defaultPrices: Record<string, Price> = {
   'gpt-4.1-mini': { input: 0.4, cached: 0.1, output: 1.6 },
-  'gpt-image-1': { input: 5, cached: 1.25, output: 40 },
+  'gpt-image-2.5-flare': { input: 5, cached: 1.25, output: 30 },
 };
 export function billingConfig(env: Record<string, string | undefined> = process.env) {
   const rawFx = env.BILLING_RUB_PER_USD || '100';
@@ -23,7 +23,7 @@ export function billingConfig(env: Record<string, string | undefined> = process.
   if (rawFx && (fxKopecks < 100 || fxKopecks > 100000)) throw Error('Invalid BILLING_RUB_PER_USD');
   const prices = z
     .record(z.string(), priceSchema)
-    .parse(env.BILLING_PRICES_JSON ? JSON.parse(env.BILLING_PRICES_JSON) : legacyPrices);
+    .parse(env.BILLING_PRICES_JSON ? JSON.parse(env.BILLING_PRICES_JSON) : defaultPrices);
   return {
     enabled: env.BILLING_ENABLED === 'true',
     fxKopecks,
