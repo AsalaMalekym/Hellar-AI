@@ -27,8 +27,8 @@ jobs:
         run: |
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Set CLOUDFLARE_ACCOUNT_ID in GitHub Secrets'; exit 1; }
           test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Set CLOUDFLARE_API_TOKEN in GitHub Secrets'; exit 1; }
-          test -n "$HELLAR_APP_ORIGIN" || { echo 'Set HELLAR_APP_ORIGIN in GitHub Variables'; exit 1; }
-          node -e 'const v=process.env.HELLAR_APP_ORIGIN; if(new URL(v).origin!==v || !v.startsWith("https://")) throw Error("Origin must be HTTPS without a trailing slash")'
+      - name: Determine site address
+        run: node scripts/resolve-cloudflare-origin.mjs
       - run: npm ci
       - run: npm test
       - run: npm run build:cloudflare
