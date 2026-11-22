@@ -1,3 +1,4 @@
+import { parseForm, isPaymentCallback } from '../server/payments.js';
 import { EventEmitter } from 'node:events';
 import { ZodError } from 'zod';
 import { HttpError } from '../server/security.js';
@@ -82,14 +83,19 @@ export class Router {
           while (true) { const next = await reader.read(); if (next.done) break; size += next.value.length; if (size > 65536) { await reader.cancel(); throw new HttpError(413,'Слишком большой запрос.'); } chunks.push(next.value); }
           const body = Buffer.concat(chunks).toString('utf8');
           if (body) {
-            if (!(request.headers.get('content-type') || '').includes('application/json')) throw new HttpError(415,'Ожидается JSON.');
-            try { r.body = JSON.parse(body); } catch { throw new HttpError(400,'Некорректный JSON.'); }
+            const type = request.headers.get('content-type') || '';
+            if (isPaymentCallback(r) && type.split(';')[0].trim() === 'application/x-www-form-urlencoded') r.body = parseForm(body);
+            else {
+              if (!type.includes('application/json')) throw new HttpError(415,'Ожидается JSON.');
+              try { r.body = JSON.parse(body); } catch { throw new HttpError(400,'Некорректный JSON.'); }
+            }
           }
         }
         const result = await selected.handler(r,p);
         if (streamResponse) return streamResponse;
         if (!sent) value = result;
         if (Buffer.isBuffer(value)) return new Response(new Uint8Array(value), {status, headers});
+        if (typeof value === 'string' && headers.get('Content-Type')?.startsWith('text/plain')) return new Response(value, {status, headers});
         headers.set('Content-Type','application/json; charset=utf-8');
         return new Response(JSON.stringify(value ?? null), { status, headers });
       } catch (error) {

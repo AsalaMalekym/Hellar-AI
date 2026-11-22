@@ -1,5 +1,7 @@
 import path from 'node:path';
+import { billingConfig, type BillingConfig } from './billing-config.js';
 export type Config = {
+  billing: BillingConfig;
   origin: string;
   production: boolean;
   secure: boolean;
@@ -51,6 +53,7 @@ export function config(): Config {
   )
     throw Error('Invalid IMAGE_SIZES');
   return {
+    billing: billingConfig(),
     origin,
     production,
     secure,

@@ -1,3 +1,4 @@
+import { reserve, settle, imageReserve, type TokenUsage } from './billing.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import sharp from 'sharp';
@@ -88,7 +89,13 @@ export async function imageRoutes(
     const key = id(),
       job = jobs.start(u.id, 'image', key, c.imageTimeout);
     let stored: string | null = null;
+    let hold: string | null = null,
+      usage: TokenUsage | null = null,
+      providerStarted = false,
+      noCharge = false;
     try {
+      if (c.billing.enabled)
+        hold = reserve(s, u.id, 'image', c.imageModel, imageReserve(s, b.prompt));
       quota(db, u.id, 'image', c.imageLimit, c.globalImageLimit);
       db.run(
         'INSERT INTO image_jobs(id,user_id,prompt,model,size,status,created_at) VALUES(?,?,?,?,?,?,?)',
@@ -101,7 +108,19 @@ export async function imageRoutes(
         Date.now(),
       );
       try {
-        const bytes = await ai.image(b.prompt, b.size, job.signal);
+        providerStarted = true;
+        const bytes = await ai.image(
+          b.prompt,
+          b.size,
+          job.signal,
+          (value) => {
+            usage = value;
+          },
+          (requestId) => {
+            if (hold)
+              db.run('UPDATE billing_holds SET provider_request_id=? WHERE id=?', requestId, hold);
+          },
+        );
         job.signal.throwIfAborted();
         const clean = await safeImage(bytes);
         const meta = await sharp(clean).metadata();
@@ -131,8 +150,11 @@ export async function imageRoutes(
           throw new HttpError(409, 'Запрос уже удалён.');
         }
         const result = db.get('SELECT * FROM image_jobs WHERE id=?', key);
+        settle(s, hold, usage);
         return { image: publicJob(result) };
       } catch (e) {
+        noCharge =
+          !(e instanceof HttpError) && [400, 401, 403, 404, 422, 429].includes((e as any)?.status);
         if (stored) {
           enqueueDelete(db, stored);
           await collectFiles(db, storage);
@@ -151,7 +173,11 @@ export async function imageRoutes(
         return p.code(502).send({ error: message, id: key });
       }
     } finally {
-      job.release();
+      try {
+        settle(s, hold, usage, !providerStarted || noCharge);
+      } finally {
+        job.release();
+      }
     }
   });
 }

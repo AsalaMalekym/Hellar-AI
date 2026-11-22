@@ -1,3 +1,4 @@
+import { billingRoutes, isPaymentCallback } from '../server/payments.js';
 import { DurableObject } from 'cloudflare:workers';
 import { z } from 'zod';
 import { Store } from './db.js';
@@ -67,6 +68,7 @@ export class HellarDatabase extends DurableObject<Env> {
           const sess = db.get<Session>('SELECT * FROM sessions WHERE token_hash=? AND expires_at>?',digest(raw),Date.now());
           if (sess) { const u = db.get<UserRow>('SELECT * FROM users WHERE id=? AND blocked=0',sess.user_id); if (u) {r.user=u;r.session=sess;} }
         }
+        if (isPaymentCallback(r)) return; // Server signature, never session/CSRF, authenticates ResultURL.
         captcha.guard(r);
         if (!['GET','HEAD','OPTIONS'].includes(r.method)) {
           if (r.headers.origin !== c.origin) throw new HttpError(403,'Источник запроса не разрешён.','CSRF_REJECTED');
@@ -88,6 +90,7 @@ export class HellarDatabase extends DurableObject<Env> {
         });
         return {ok:true};
       });
+      await billingRoutes(router as any,s);
       await authRoutes(router as any,s,mailer,captcha);
       await chatRoutes(router as any,s,ai,jobs);
       await imageRoutes(router as any,s,ai,jobs,storage);

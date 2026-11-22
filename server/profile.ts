@@ -141,6 +141,11 @@ export async function profileRoutes(app: FastifyInstance, s: Services, storage: 
         400,
         'Аккаунт администратора удаляется оператором на сервере после передачи управления.',
       );
+    if (db.get("SELECT id FROM payment_orders WHERE user_id=? AND status='pending' LIMIT 1", u.id) ||
+        db.get("SELECT id FROM billing_holds WHERE user_id=? AND state IN ('reserved','review') LIMIT 1", u.id) ||
+        db.get('SELECT user_id FROM wallets WHERE user_id=? AND balance>0', u.id) ||
+        db.get('SELECT id FROM subscriptions WHERE user_id=? AND expires_at>?', u.id, Date.now()))
+      throw new HttpError(409, 'Перед удалением аккаунта обратись к владельцу для закрытия платежей и остатка баланса.');
     s.abortUser(u.id);
     db.tx(() => {
       enqueueDelete(db, u.avatar_key);

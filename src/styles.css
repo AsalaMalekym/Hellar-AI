@@ -2592,3 +2592,22 @@ button.text-link {
 .captcha-widget { min-width: 0; width: 100%; display: grid; gap: 12px; }
 .captcha-widget > div:first-child { min-height: 65px; }
 @media (max-width: 420px) { .captcha-gate { padding: 12px; } .captcha-gate .auth-card { padding: 24px 16px; } }
+
+/* Billing keeps the existing cosmic palette and readable mobile controls. */
+.billing-heading { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1.5rem; }
+.billing-heading h1 { margin:0; }
+.billing-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr)); gap:1.25rem; }
+.billing-page .section-card { min-width:0; }
+.billing-page .section-card h2 { display:flex; align-items:center; gap:.6rem; }
+.billing-number { font-size:clamp(1.8rem,4vw,2.6rem); font-weight:700; line-height:1.3; margin:1rem 0; overflow-wrap:anywhere; }
+.billing-number span { font-size:1rem; font-weight:400; }
+.billing-presets { display:flex; gap:.5rem; flex-wrap:wrap; }
+.billing-presets .btn { padding:.55rem .8rem; }
+.billing-plan { border-color:rgba(177,124,255,.5); }
+.billing-page progress { width:100%; height:1rem; accent-color:#ac77ff; }
+.billing-table { overflow-x:auto; }
+.billing-table table { width:100%; border-collapse:collapse; text-align:left; }
+.billing-table th,.billing-table td { padding:.8rem; border-bottom:1px solid rgba(180,140,255,.2); white-space:nowrap; }
+.billing-review { padding:1rem 0; border-top:1px solid rgba(180,140,255,.2); overflow-wrap:anywhere; }
+.billing-page .notice { padding:1rem; margin-bottom:1rem; border:1px solid rgba(180,140,255,.4); border-radius:1rem; }
+@media(max-width:760px) { .billing-grid { grid-template-columns:1fr; } }

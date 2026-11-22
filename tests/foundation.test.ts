@@ -9,7 +9,7 @@ import path from 'node:path';
 import { Store } from '../server/db.js';
 test('migration and health', async () => {
   const db = new Store(':memory:');
-  assert.equal(db.get('SELECT COUNT(*) n FROM migrations').n, 2);
+  assert.equal(db.get('SELECT COUNT(*) n FROM migrations').n, 3);
   db.close();
   const app = await buildApp({ ...config(), dbPath: ':memory:' });
   assert.equal((await app.inject('/api/health')).statusCode, 200);
@@ -41,7 +41,7 @@ test('email migration preserves existing owner and invitation and can reopen the
         'existing-hash',
       );
       assert.equal(db.get('SELECT used_at FROM invitations WHERE id=?', 'invite').used_at, null);
-      assert.equal(db.get('SELECT COUNT(*) n FROM migrations').n, 2);
+      assert.equal(db.get('SELECT COUNT(*) n FROM migrations').n, 3);
       db.close();
     }
   } finally {

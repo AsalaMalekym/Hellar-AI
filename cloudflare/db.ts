@@ -1,11 +1,12 @@
 import schema from '../migrations/001_initial.sql';
 import emailCaptcha from '../migrations/002_email_captcha.sql';
+import billing from '../migrations/003_billing.sql';
 // One shared object preserves the original application's synchronous transactions.
 export class Store {
   constructor(private storage: DurableObjectStorage) {
     storage.sql.exec('PRAGMA foreign_keys=ON');
     storage.sql.exec('CREATE TABLE IF NOT EXISTS migrations(name TEXT PRIMARY KEY,applied_at INTEGER NOT NULL)');
-    for (const [name, sql] of [['001_initial.sql', schema], ['002_email_captcha.sql', emailCaptcha]]) {
+    for (const [name, sql] of [['001_initial.sql', schema], ['002_email_captcha.sql', emailCaptcha], ['003_billing.sql', billing]]) {
       if (!this.get('SELECT name FROM migrations WHERE name=?', name)) {
         this.tx(() => {
           storage.sql.exec(sql);
@@ -25,6 +26,7 @@ export class Store {
     this.run("UPDATE messages SET status='interrupted' WHERE status='streaming'");
     this.run("UPDATE image_jobs SET status='interrupted',error='Генерация прервана перезапуском сервера' WHERE status='pending'");
     this.run('DELETE FROM generation_locks');
+    this.run("UPDATE billing_holds SET state='review',note='restart' WHERE state='reserved'");
   }
   close() {}
 }

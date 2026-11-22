@@ -26,6 +26,7 @@ export class Store {
       "UPDATE image_jobs SET status='interrupted',error='Генерация прервана перезапуском сервера' WHERE status='pending'",
     );
     this.run('DELETE FROM generation_locks');
+    this.run("UPDATE billing_holds SET state='review',note='restart' WHERE state='reserved'");
   }
   get<T = any>(s: string, ...v: SQLInputValue[]): T | undefined {
     return this.db.prepare(s).get(...v) as T | undefined;

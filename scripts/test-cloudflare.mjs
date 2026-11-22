@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { Miniflare, createFetchMock } from 'miniflare';
 import { PNG } from 'pngjs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -19,14 +20,14 @@ mock.get('https://challenges.cloudflare.com').intercept({path:'/turnstile/v0/sit
   return JSON.stringify({success,action,hostname:'localhost'});
 }).persist();
 api.intercept({path:'/v1/chat/completions',method:'POST'}).reply(200,
-  'data: '+JSON.stringify({choices:[{index:0,delta:{content:'Проверка потока'},finish_reason:null}]})+'\n\ndata: [DONE]\n\n',
+  'data: '+JSON.stringify({choices:[{index:0,delta:{content:'Проверка потока'},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({choices:[],usage:{prompt_tokens:1000,completion_tokens:100,prompt_tokens_details:{cached_tokens:500}}})+'\n\ndata: [DONE]\n\n',
   {headers:{'content-type':'text/event-stream'}});
 const png = PNG.sync.write(new PNG({width:1024,height:1024}));
-api.intercept({path:'/v1/images/generations',method:'POST'}).reply(200,JSON.stringify({data:[{b64_json:png.toString('base64')}]}),{headers:{'content-type':'application/json'}});
+api.intercept({path:'/v1/images/generations',method:'POST'}).reply(200,JSON.stringify({data:[{b64_json:png.toString('base64')}],usage:{input_tokens:100,output_tokens:250}}),{headers:{'content-type':'application/json'}});
 const options={modules:true,scriptPath:'dist-worker/index.js',compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],
   durableObjects:{HELLAR:{className:'HellarDatabase',useSQLite:true}},r2Buckets:['FILES'],
   durableObjectsPersist:path.join(state,'db'),r2Persist:path.join(state,'r2'),
-  bindings:{APP_ORIGIN:origin,NODE_ENV:'development',COOKIE_SECURE:'false',RESEND_API_KEY:'test-mail-key',MAIL_FROM:'Hellar <no-reply@example.com>',TURNSTILE_SITE_KEY:'test-site-key',TURNSTILE_SECRET_KEY:'test-secret-key',SETUP_TOKEN:setup,OPENAI_API_KEY:'test-only-no-real-api-key'},cf:false,fetchMock:mock};
+  bindings:{BILLING_ENABLED:'true',BILLING_RUB_PER_USD:'100',ROBOKASSA_TEST:'false',ROBOKASSA_MERCHANT_LOGIN:'local-merchant',ROBOKASSA_PASSWORD_1:'local-first',ROBOKASSA_PASSWORD_2:'local-second',APP_ORIGIN:origin,NODE_ENV:'development',COOKIE_SECURE:'false',RESEND_API_KEY:'test-mail-key',MAIL_FROM:'Hellar <no-reply@example.com>',TURNSTILE_SITE_KEY:'test-site-key',TURNSTILE_SECRET_KEY:'test-secret-key',SETUP_TOKEN:setup,OPENAI_API_KEY:'test-only-no-real-api-key'},cf:false,fetchMock:mock};
 let mf=new Miniflare(options);
 function client() {
   const cookies=new Map(); let csrf='';
@@ -65,6 +66,23 @@ try {
   assert.equal((await b('GET','/admin/users')).status,403);
   await enter(stranger);
   assert.equal((await stranger('POST','/auth/register',{name:'Другой',email:'other@example.com',password,confirmPassword:password,invitation,captchaToken:cap('register')})).status,400);
+  const emptyChat=(await b('POST','/chats',{})).data.chat;
+  assert.equal((await b('POST',`/chats/${emptyChat.id}/generate`,{content:'Недостаточно кредитов'})).status,402);
+  const order=(await b('POST','/billing/topup',{rubKopecks:120000,requestKey:crypto.randomUUID()})).data;
+  assert.ok(order.url,JSON.stringify(order));
+  const paymentUrl=new URL(order.url), inv=String(order.orderId), nonce=paymentUrl.searchParams.get('Shp_order');
+  const signed=createHash('sha256').update(`1200.000000:${inv}:local-second:Shp_order=${nonce}`).digest('hex');
+  const callback=new URLSearchParams({OutSum:'1200.000000',InvId:inv,Shp_order:nonce,SignatureValue:signed});
+  const sendCallback=body=>mf.dispatchFetch(origin+'/api/payments/robokassa/result',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body});
+  const forged=new URLSearchParams(callback);forged.set('OutSum','999.00');
+  assert.equal((await sendCallback(forged)).status,403);
+  assert.equal(await (await sendCallback(callback)).text(),'OK'+inv);
+  assert.equal(await (await sendCallback(callback)).text(),'OK'+inv);
+  assert.equal((await b('GET','/billing')).data.wallet,12000000);
+  assert.equal((await a('GET','/billing')).data.wallet,0);
+  assert.equal((await b('POST','/billing/subscribe',{})).status,200);
+  assert.equal((await b('POST','/billing/subscribe',{})).status,409);
+  assert.equal((await b('GET','/billing')).data.wallet,0);
   const chat=(await b('POST','/chats',{})).data.chat;
   assert.equal((await a('GET','/chats/'+chat.id)).status,404);
   const stream=await b('POST',`/chats/${chat.id}/generate`,{content:'Проверка'});
@@ -74,6 +92,10 @@ try {
   const generated=await b('POST','/images',{prompt:'Космос',size:'1024x1024'});
   assert.equal(generated.status,200,generated.text);
   const image=generated.data.image;
+  const billing=(await b('GET','/billing')).data;
+  assert.equal(billing.plan.remaining,12000000-820-21000);
+  assert.equal(billing.reserved,0);
+  assert.equal(billing.ledger.length,4);
   assert.equal((await a('GET',`/images/${image.id}/file`)).status,404);
   assert.equal((await b('GET',`/images/${image.id}/file`)).headers.get('content-type'),'image/png');
   assert.equal((await stranger('GET','/chats')).status,401);
@@ -89,5 +111,8 @@ try {
   await mf.dispose();mf=new Miniflare(options);
   assert.equal((await b('GET','/chats/'+chat.id)).data.messages.length,2);
   assert.equal((await b('GET',`/images/${image.id}/file`)).status,200);
-  console.log('Cloudflare integration passed: captcha gate, verified-email registration, password reset, bootstrap, PBKDF2 login, CSRF, invitations, roles, ownership, SSE, R2 images, persistence across runtime restart. Real provider calls: 0.');
+  assert.equal((await b('GET','/billing')).data.plan.remaining,12000000-820-21000);
+  assert.equal(await (await sendCallback(callback)).text(),'OK'+inv);
+  assert.equal((await b('GET','/billing')).data.wallet,0);
+  console.log('Cloudflare integration passed: signed SBP callbacks without browser cookies, replay protection, subscriptions, exact token billing, durable ledger, captcha gate, verified-email registration, password reset, bootstrap, PBKDF2 login, CSRF, invitations, roles, ownership, SSE, R2 images, persistence across runtime restart. Real provider calls: 0.');
 } finally {await mf.dispose();await rm(state,{recursive:true,force:true});}

@@ -76,6 +76,7 @@ export default function Account() {
       <p className="eyebrow">ТВОЯ ОРБИТА</p>
       <h1>Личный кабинет</h1>
       <ErrorBox message={error} />
+      <p><Link className="btn secondary" to="/billing">Баланс и подписка</Link></p>
       <div className="profile-grid">
         <div>
           <div className="glass section-card profile-summary">
@@ -298,6 +299,7 @@ export default function Account() {
       {deleting && (
         <Modal title="Удалить аккаунт навсегда?" onClose={() => setDeleting(false)}>
           <ErrorBox message={error} />
+      <p><Link className="btn secondary" to="/billing">Баланс и подписка</Link></p>
           <p>Все твои чаты и изображения будут удалены. Введи пароль и слово УДАЛИТЬ.</p>
           <form
             className="stack"

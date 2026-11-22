@@ -1,3 +1,4 @@
+import { billingRoutes, isPaymentCallback, parseForm } from './payments.js';
 import Fastify, { LogController } from 'fastify';
 import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
@@ -58,6 +59,9 @@ export async function buildApp(c: Config = config(), options: BuildOptions = {})
   const ai = options.ai || provider(c);
   const sessionName = c.secure ? '__Host-hellar-session' : 'hellar-session',
     preName = c.secure ? '__Host-hellar-pre' : 'hellar-pre';
+  app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_r, body, done) => {
+    try { done(null, parseForm(String(body))); } catch (e) { done(e as Error); }
+  });
   await app.register(cookie);
   await app.register(helmet, {
     contentSecurityPolicy: {
@@ -152,6 +156,7 @@ export async function buildApp(c: Config = config(), options: BuildOptions = {})
         }
       }
     }
+    if (isPaymentCallback(r)) return; // Authenticated by Robokassa signature in the handler.
     captcha.guard(r);
     if (!['GET', 'HEAD', 'OPTIONS'].includes(r.method)) {
       if (r.headers.origin !== c.origin)
@@ -195,6 +200,7 @@ export async function buildApp(c: Config = config(), options: BuildOptions = {})
     imageSizes: c.imageSizes,
     limits: { chat: c.chatLimit, image: c.imageLimit },
   }));
+  await billingRoutes(app, s);
   await authRoutes(app, s, mailer, captcha);
   const storage = options.storage || new LocalStorage(c.storagePath);
   await collectFiles(db, storage);

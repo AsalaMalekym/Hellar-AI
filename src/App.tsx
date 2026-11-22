@@ -8,6 +8,7 @@ import Setup from './pages/Setup';
 import CaptchaGate from './components/CaptchaGate';
 import Guard from './components/Guard';
 import { Empty, Loading } from './components/ui';
+const Billing = lazy(() => import('./pages/Billing'));
 const Chat = lazy(() => import('./pages/Chat')),
   Images = lazy(() => import('./pages/Images')),
   Account = lazy(() => import('./pages/Account')),
@@ -28,8 +29,7 @@ function About() {
         HttpOnly cookie.
       </p>
       <p>
-        Без ключа ИИ не генерирует ответы. Без почтового сервиса письма не отправляются. Платёжных
-        функций нет.
+        Без ключа ИИ не генерирует ответы. Без почтового сервиса письма не отправляются. Пополнение и подписка доступны после подключения владельцем приёма платежей.
       </p>
       <h2>Закрытая бета</h2>
       <p>
@@ -86,6 +86,7 @@ export default function App() {
                     </Guard>
                   }
                 />
+                <Route path="billing" element={<Guard><Billing /></Guard>} />
                 <Route path="setup" element={<Setup />} />
                 <Route path="about" element={<About />} />
                 <Route

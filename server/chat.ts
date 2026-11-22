@@ -1,3 +1,4 @@
+import { reserve, settle, chatReserve, type TokenUsage } from './billing.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { once } from 'node:events';
@@ -136,6 +137,10 @@ export async function chatRoutes(
       throw new HttpError(400, 'Модель больше недоступна. Выбери другую в настройках диалога.');
     rate(db, 'chat:' + u.id, 12, 60000);
     const job = jobs.start(u.id, 'chat', chat.id, c.aiTimeout);
+    let hold: string | null = null,
+      usage: TokenUsage | null = null,
+      providerStarted = false,
+      noCharge = false;
     let mid = '',
       output = '',
       status = 'streaming';
@@ -159,6 +164,8 @@ export async function chatRoutes(
         chat.system_prompt,
         c.contextChars,
       );
+      if (c.billing.enabled)
+        hold = reserve(s, u.id, 'chat', chat.model, chatReserve(s, chat.model, context));
       quota(db, u.id, 'chat', c.chatLimit, c.globalChatLimit);
       mid = id();
       db.tx(() => {
@@ -209,7 +216,19 @@ export async function chatRoutes(
       }, 15000);
       let saved = 0;
       try {
-        for await (const text of ai.stream(chat.model, context, job.signal)) {
+        providerStarted = true;
+        for await (const text of ai.stream(
+          chat.model,
+          context,
+          job.signal,
+          (value) => {
+            usage = value;
+          },
+          (requestId) => {
+            if (hold)
+              db.run('UPDATE billing_holds SET provider_request_id=? WHERE id=?', requestId, hold);
+          },
+        )) {
           job.signal.throwIfAborted();
           if (
             !db.get(
@@ -231,9 +250,14 @@ export async function chatRoutes(
           }
         }
         if (!output) throw new HttpError(502, 'Модель вернула пустой ответ.');
+        settle(s, hold, usage);
         status = 'complete';
         send('done', { status });
       } catch (e) {
+        noCharge =
+          !output &&
+          !(e instanceof HttpError) &&
+          [400, 401, 403, 404, 422, 429].includes((e as any)?.status);
         status = job.signal.aborted ? 'interrupted' : 'error';
         send('error', { message: providerError(e, job.signal), status });
         r.log.warn(
@@ -250,7 +274,11 @@ export async function chatRoutes(
     } finally {
       if (heartbeat) clearInterval(heartbeat);
       p.raw.off('close', onClose);
-      job.release();
+      try {
+        settle(s, hold, usage, !providerStarted || noCharge);
+      } finally {
+        job.release();
+      }
     }
   });
 }

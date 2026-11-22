@@ -42,6 +42,19 @@ jobs:
       - name: Determine site address
         run: node scripts/resolve-cloudflare-origin.mjs
       - run: npm ci
+      - name: Check billing settings if supplied
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          BILLING_ENABLED: ${{ secrets.BILLING_ENABLED }}
+          BILLING_RUB_PER_USD: ${{ secrets.BILLING_RUB_PER_USD }}
+          BILLING_PRICES_JSON: ${{ secrets.BILLING_PRICES_JSON }}
+          ROBOKASSA_MERCHANT_LOGIN: ${{ secrets.ROBOKASSA_MERCHANT_LOGIN }}
+          ROBOKASSA_PASSWORD_1: ${{ secrets.ROBOKASSA_PASSWORD_1 }}
+          ROBOKASSA_PASSWORD_2: ${{ secrets.ROBOKASSA_PASSWORD_2 }}
+          ROBOKASSA_TEST_PASSWORD_1: ${{ secrets.ROBOKASSA_TEST_PASSWORD_1 }}
+          ROBOKASSA_TEST_PASSWORD_2: ${{ secrets.ROBOKASSA_TEST_PASSWORD_2 }}
+          ROBOKASSA_TEST: ${{ secrets.ROBOKASSA_TEST }}
+        run: node --import tsx scripts/check-billing.mjs
       - run: npm test
       - run: npm run build:cloudflare
       - run: npm run test:cloudflare
@@ -57,6 +70,15 @@ jobs:
           TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
           SETUP_TOKEN: ${{ secrets.HELLAR_SETUP_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          BILLING_ENABLED: ${{ secrets.BILLING_ENABLED }}
+          BILLING_RUB_PER_USD: ${{ secrets.BILLING_RUB_PER_USD }}
+          BILLING_PRICES_JSON: ${{ secrets.BILLING_PRICES_JSON }}
+          ROBOKASSA_MERCHANT_LOGIN: ${{ secrets.ROBOKASSA_MERCHANT_LOGIN }}
+          ROBOKASSA_PASSWORD_1: ${{ secrets.ROBOKASSA_PASSWORD_1 }}
+          ROBOKASSA_PASSWORD_2: ${{ secrets.ROBOKASSA_PASSWORD_2 }}
+          ROBOKASSA_TEST_PASSWORD_1: ${{ secrets.ROBOKASSA_TEST_PASSWORD_1 }}
+          ROBOKASSA_TEST_PASSWORD_2: ${{ secrets.ROBOKASSA_TEST_PASSWORD_2 }}
+          ROBOKASSA_TEST: ${{ secrets.ROBOKASSA_TEST }}
         run: node scripts/cloudflare-secrets.mjs
       - name: Check deployed health
         run: |
