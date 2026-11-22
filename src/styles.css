@@ -2586,3 +2586,9 @@ button.text-link {
 .markdown p {
   margin: 10px 0;
 }
+
+.captcha-gate { min-height: 100dvh; display: grid; place-items: center; padding: 24px; position: relative; isolation: isolate; }
+.captcha-gate .auth-card { width: min(100%, 460px); margin: 0; position: relative; }
+.captcha-widget { min-width: 0; width: 100%; display: grid; gap: 12px; }
+.captcha-widget > div:first-child { min-height: 65px; }
+@media (max-width: 420px) { .captcha-gate { padding: 12px; } .captcha-gate .auth-card { padding: 24px 16px; } }

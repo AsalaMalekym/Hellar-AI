@@ -40,7 +40,16 @@ export async function fixture(overrides: Partial<Config> = {}, options: BuildOpt
     );
     return raw;
   };
-  const app = await buildApp(c, options);
+  const verificationLinks = new Map<string, string>();
+  const supplied = options.mailer;
+  const app = await buildApp(c, { ...options, mailer: {
+    ready: supplied?.ready ?? true,
+    sendReset: supplied ? supplied.sendReset.bind(supplied) : async () => {},
+    async sendVerification(email, url) {
+      if (supplied) await supplied.sendVerification(email, url);
+      verificationLinks.set(email, url);
+    },
+  } });
   let counter = 0;
   function client() {
     const jar = new Map<string, string>();
@@ -87,12 +96,16 @@ export async function fixture(overrides: Partial<Config> = {}, options: BuildOpt
       },
       async register(email = 'member@example.com', invitation = seedInvite()) {
         await this.init();
-        return this.request('POST', '/auth/register', {
+        const result = await this.request('POST', '/auth/register', {
           email,
           name: 'Тестовый пользователь',
           password: PASSWORD,
           confirmPassword: PASSWORD,
           invitation,
+        });
+        if (result.statusCode !== 200) return result;
+        return this.request('POST', '/auth/verify-email', {
+          token: verificationLinks.get(email.toLowerCase())!.split('#')[1], password: PASSWORD, confirmPassword: PASSWORD,
         });
       },
     };
@@ -104,6 +117,7 @@ export async function fixture(overrides: Partial<Config> = {}, options: BuildOpt
     admin,
     client,
     seedInvite,
+    verificationLinks,
     async close() {
       await app.close();
       db.close();

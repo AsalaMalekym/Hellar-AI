@@ -12,7 +12,8 @@ import {
   audit,
   HttpError,
 } from './security.js';
-import type { Mailer } from './mail.js';
+import type { Mailer } from './mail-api.js';
+import type { Captcha } from './captcha.js';
 const email = z
   .string()
   .trim()
@@ -20,16 +21,18 @@ const email = z
   .max(254)
   .transform((s) => s.toLowerCase());
 const password = z.string().min(12, 'Пароль должен содержать минимум 12 символов').max(128);
-const register = z
-  .object({
-    email,
-    password,
-    confirmPassword: z.string(),
-    name: z.string().trim().min(2).max(60),
-    invitation: z.string().trim().min(20).max(150),
-  })
-  .refine((x) => x.password === x.confirmPassword, { message: 'Пароли не совпадают' });
-export async function authRoutes(app: FastifyInstance, s: Services, mailer: Mailer) {
+const register = z.object({
+  email,
+  name: z.string().trim().min(2).max(60),
+  invitation: z.string().trim().min(20).max(150),
+  captchaToken: z.string().max(2048).optional(),
+});
+export async function authRoutes(
+  app: FastifyInstance,
+  s: Services,
+  mailer: Mailer,
+  captcha: Captcha,
+) {
   const { db, c } = s;
   app.get('/api/auth/me', async (r, p) => {
     if (!r.user) {
@@ -43,39 +46,97 @@ export async function authRoutes(app: FastifyInstance, s: Services, mailer: Mail
       });
       return { user: null, csrf };
     }
-    return { user: publicUser(r.user), csrf: r.session!.csrf };
+    return { user: captcha.passed(r) ? publicUser(r.user) : null, csrf: r.session!.csrf };
   });
-  app.post('/api/auth/register', async (r, p) => {
+  app.post('/api/auth/register', async (r) => {
     rate(db, 'register:' + r.ip, 5, 3600000);
     const b = register.parse(r.body);
+    await captcha.verify(b.captchaToken, 'register', r);
+    if (!mailer.ready)
+      throw new HttpError(
+        503,
+        'Почта ещё не подключена. Регистрация временно недоступна.',
+        'MAIL_NOT_CONFIGURED',
+      );
+    rate(db, 'verify-email:' + b.email, 3, 3600000);
     const invHash = digest(b.invitation);
     const inv = db.get('SELECT * FROM invitations WHERE token_hash=?', invHash);
-    if (!inv || inv.used_at || inv.revoked || inv.expires_at < Date.now())
+    if (!inv || inv.used_at || inv.revoked || inv.expires_at <= Date.now())
       throw new HttpError(400, 'Приглашение недействительно, отозвано или уже использовано.');
     if (db.get('SELECT id FROM users WHERE email=?', b.email))
       throw new HttpError(409, 'Регистрация с такими данными недоступна. Попробуй войти.');
-    const hashed = await hashPassword(b.password);
-    const uid = id();
-    db.tx(() => {
-      const changed = db.run(
-        'UPDATE invitations SET used_by=NULL,used_at=? WHERE token_hash=? AND used_at IS NULL AND revoked=0 AND expires_at>?',
-        Date.now(),
-        invHash,
+    const raw = token(),
+      hash = digest(raw);
+    db.run('DELETE FROM pending_registrations WHERE expires_at<?', Date.now());
+    db.run(
+      'INSERT INTO pending_registrations VALUES(?,?,?,?,?)',
+      hash,
+      b.email,
+      b.name,
+      invHash,
+      Date.now() + 1800000,
+    );
+    try {
+      await mailer.sendVerification(b.email, c.origin + '/verify-email#' + raw);
+    } catch {
+      db.run('DELETE FROM pending_registrations WHERE token_hash=?', hash);
+      throw new HttpError(
+        503,
+        'Не удалось отправить письмо. Попробуй ещё раз позже.',
+        'MAIL_DELIVERY_FAILED',
+      );
+    }
+    return {
+      message:
+        'Письмо отправлено. Открой ссылку в течение 30 минут и задай пароль. Если письма нет, проверь «Спам» или повтори регистрацию.',
+    };
+  });
+  app.post('/api/auth/verify-email', async (r, p) => {
+    rate(db, 'verify:' + r.ip, 10, 3600000);
+    const b = z
+      .object({ token: z.string().min(20).max(150), password, confirmPassword: z.string() })
+      .refine((x) => x.password === x.confirmPassword, { message: 'Пароли не совпадают' })
+      .parse(r.body);
+    const hash = digest(b.token);
+    function pending() {
+      const row = db.get(
+        'SELECT * FROM pending_registrations WHERE token_hash=? AND expires_at>?',
+        hash,
         Date.now(),
       );
-      if (changed.changes !== 1) throw new HttpError(400, 'Приглашение уже использовано.');
+      if (!row)
+        throw new HttpError(400, 'Ссылка недействительна или истекла. Повтори регистрацию.');
+      return row;
+    }
+    pending();
+    const hashed = await hashPassword(b.password),
+      uid = id();
+    db.tx(() => {
+      const row = pending();
+      if (db.get('SELECT id FROM users WHERE email=?', row.email))
+        throw new HttpError(409, 'Аккаунт уже существует. Войди или восстанови пароль.');
+      const changed = db.run(
+        'UPDATE invitations SET used_at=? WHERE token_hash=? AND used_at IS NULL AND revoked=0 AND expires_at>?',
+        Date.now(),
+        row.invitation_hash,
+        Date.now(),
+      );
+      if (changed.changes !== 1)
+        throw new HttpError(400, 'Приглашение недействительно или уже использовано.');
       db.run(
-        'INSERT INTO users(id,email,name,password_hash,created_at) VALUES(?,?,?,?,?)',
+        'INSERT INTO users(id,email,name,password_hash,created_at,email_verified_at) VALUES(?,?,?,?,?,?)',
         uid,
-        b.email,
-        b.name,
+        row.email,
+        row.name,
         hashed,
         Date.now(),
+        Date.now(),
       );
-      db.run('UPDATE invitations SET used_by=? WHERE token_hash=?', uid, invHash);
+      db.run('UPDATE invitations SET used_by=? WHERE token_hash=?', uid, row.invitation_hash);
+      db.run('DELETE FROM pending_registrations WHERE email=?', row.email);
     });
     const user = db.get<UserRow>('SELECT * FROM users WHERE id=?', uid)!;
-    audit(db, uid, 'register', uid);
+    audit(db, uid, 'register.verified', uid);
     return { user: publicUser(user), ...s.startSession(r, p, user) };
   });
   app.post('/api/auth/login', async (r, p) => {
@@ -99,7 +160,8 @@ export async function authRoutes(app: FastifyInstance, s: Services, mailer: Mail
   });
   app.post('/api/auth/forgot', async (r) => {
     rate(db, 'forgot-ip:' + r.ip, 5, 3600000);
-    const b = z.object({ email }).parse(r.body);
+    const b = z.object({ email, captchaToken: z.string().max(2048).optional() }).parse(r.body);
+    await captcha.verify(b.captchaToken, 'forgot', r);
     rate(db, 'forgot-email:' + b.email, 3, 3600000);
     if (!mailer.ready)
       throw new HttpError(
@@ -149,7 +211,12 @@ export async function authRoutes(app: FastifyInstance, s: Services, mailer: Mail
       );
       if (!row) throw new HttpError(400, 'Ссылка уже использована.');
       s.abortUser(row.user_id);
-      db.run('UPDATE users SET password_hash=? WHERE id=?', hashed, row.user_id);
+      db.run(
+        'UPDATE users SET password_hash=?,email_verified_at=COALESCE(email_verified_at,?) WHERE id=?',
+        hashed,
+        Date.now(),
+        row.user_id,
+      );
       db.run('UPDATE password_resets SET used_at=? WHERE user_id=?', Date.now(), row.user_id);
       db.run('DELETE FROM sessions WHERE user_id=?', row.user_id);
     });

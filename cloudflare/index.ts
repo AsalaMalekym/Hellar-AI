@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { Store } from './db.js';
 import { Router } from './router.js';
 import { R2Storage } from './storage.js';
+import { createCaptcha } from '../server/captcha.js';
+import { createApiMailer } from '../server/mail-api.js';
 import { authRoutes } from '../server/auth.js';
 import { chatRoutes } from '../server/chat.js';
 import { imageRoutes } from '../server/images.js';
@@ -55,6 +57,9 @@ export class HellarDatabase extends DurableObject<Env> {
         },
         clearSession(p) { p.clearCookie(sessionName,{path:'/',secure:c.secure,httpOnly:true,sameSite:'strict'}); },
       };
+      const captcha = createCaptcha(s);
+      captcha.routes(router as any);
+      const mailer = createApiMailer(c.mailApiKey, c.smtp.from);
       router.before = async (r,p) => {
         rate(db as any, 'all:' + r.ip,240,60000);
         const raw = r.cookies[sessionName];
@@ -62,6 +67,7 @@ export class HellarDatabase extends DurableObject<Env> {
           const sess = db.get<Session>('SELECT * FROM sessions WHERE token_hash=? AND expires_at>?',digest(raw),Date.now());
           if (sess) { const u = db.get<UserRow>('SELECT * FROM users WHERE id=? AND blocked=0',sess.user_id); if (u) {r.user=u;r.session=sess;} }
         }
+        captcha.guard(r);
         if (!['GET','HEAD','OPTIONS'].includes(r.method)) {
           if (r.headers.origin !== c.origin) throw new HttpError(403,'Источник запроса не разрешён.','CSRF_REJECTED');
           const expected = r.session?.csrf || r.cookies[preName] || '';
@@ -69,7 +75,7 @@ export class HellarDatabase extends DurableObject<Env> {
         }
       };
       router.get('/api/health',async () => ({ok:true,version:packageInfo.version,runtime:'cloudflare'}));
-      router.get('/api/status',async () => ({ version:packageInfo.version,chatReady:ai.ready,imageReady:ai.ready,mailReady:false,avatarReady:false,chatModels:c.chatModels,imageModel:c.imageModel,imageSizes:c.imageSizes,limits:{chat:c.chatLimit,image:c.imageLimit} }));
+      router.get('/api/status',async () => ({ version:packageInfo.version,chatReady:ai.ready,imageReady:ai.ready,mailReady:mailer.ready,captchaRequired:captcha.required,captchaReady:captcha.ready,turnstileSiteKey:captcha.ready ? c.captcha.siteKey : '',avatarReady:false,chatModels:c.chatModels,imageModel:c.imageModel,imageSizes:c.imageSizes,limits:{chat:c.chatLimit,image:c.imageLimit} }));
       router.post('/api/setup',async (r:any) => {
         rate(db as any,'setup:'+r.ip,5,3600000);
         if (!env.SETUP_TOKEN || env.SETUP_TOKEN.length < 32 || !equal(String(r.headers['x-setup-token']||''),env.SETUP_TOKEN)) throw new HttpError(403,'Неверный ключ первоначальной настройки.');
@@ -82,8 +88,7 @@ export class HellarDatabase extends DurableObject<Env> {
         });
         return {ok:true};
       });
-      const mailer = { ready:false, async sendReset() { throw new HttpError(503,'Почтовый сервис ещё не подключён.'); } };
-      await authRoutes(router as any,s,mailer);
+      await authRoutes(router as any,s,mailer,captcha);
       await chatRoutes(router as any,s,ai,jobs);
       await imageRoutes(router as any,s,ai,jobs,storage);
       await profileRoutes(router as any,s,storage);
@@ -107,7 +112,7 @@ export default {
     result.headers.set('X-Content-Type-Options','nosniff');
     result.headers.set('X-Frame-Options','DENY');
     result.headers.set('Referrer-Policy','no-referrer');
-    result.headers.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+    result.headers.set('Content-Security-Policy',"default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' https://challenges.cloudflare.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
     return result;
   },
 };

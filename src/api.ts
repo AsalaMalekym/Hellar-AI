@@ -11,6 +11,9 @@ export type Status = {
   chatReady: boolean;
   imageReady: boolean;
   mailReady: boolean;
+  captchaRequired: boolean;
+  captchaReady: boolean;
+  turnstileSiteKey: string;
   avatarReady?: boolean;
   chatModels: string[];
   imageModel: string;
@@ -38,7 +41,10 @@ export async function api<T = any>(path: string, options: RequestInit = {}): Pro
   if (options.method && options.method !== 'GET') h.set('X-CSRF-Token', csrf);
   const r = await fetch('/api' + path, { credentials: 'same-origin', ...options, headers: h });
   const j = await r.json().catch(() => ({ error: 'Сервер вернул некорректный ответ' }));
-  if (!r.ok) throw new ApiError(j.error || 'Ошибка сервера', r.status, j.code);
+  if (!r.ok) {
+    if (j.code === 'CAPTCHA_REQUIRED') window.dispatchEvent(new Event('hellar:captcha-required'));
+    throw new ApiError(j.error || 'Ошибка сервера', r.status, j.code);
+  }
   return j;
 }
 export const post = <T = any>(path: string, data: unknown = {}) =>

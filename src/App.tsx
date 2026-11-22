@@ -5,6 +5,7 @@ import Layout from './components/Layout';
 import Home from './pages/Home';
 import Auth from './pages/Auth';
 import Setup from './pages/Setup';
+import CaptchaGate from './components/CaptchaGate';
 import Guard from './components/Guard';
 import { Empty, Loading } from './components/ui';
 const Chat = lazy(() => import('./pages/Chat')),
@@ -27,7 +28,8 @@ function About() {
         HttpOnly cookie.
       </p>
       <p>
-        Без ключа ИИ не генерирует ответы. Без почтового сервиса письма не отправляются. Платёжных функций нет.
+        Без ключа ИИ не генерирует ответы. Без почтового сервиса письма не отправляются. Платёжных
+        функций нет.
       </p>
       <h2>Закрытая бета</h2>
       <p>
@@ -44,65 +46,67 @@ export default function App() {
   return (
     <BrowserRouter>
       <Provider>
-        <Suspense fallback={<Loading />}>
-          <Routes>
-            <Route element={<Layout />}>
-              <Route index element={<Home />} />
-              {(['login', 'register', 'forgot', 'reset'] as const).map((mode) => (
-                <Route key={mode} path={mode} element={<Auth mode={mode} />} />
-              ))}
-              <Route
-                path="chat"
-                element={
-                  <Guard>
-                    <Chat />
-                  </Guard>
-                }
-              />
-              <Route
-                path="account"
-                element={
-                  <Guard>
-                    <Account />
-                  </Guard>
-                }
-              />
-              <Route
-                path="admin"
-                element={
-                  <Guard admin>
-                    <Admin />
-                  </Guard>
-                }
-              />
-              <Route
-                path="images"
-                element={
-                  <Guard>
-                    <Images />
-                  </Guard>
-                }
-              />
-              <Route path="setup" element={<Setup />} />
-              <Route path="about" element={<About />} />
-              <Route
-                path="*"
-                element={
-                  <Empty
-                    title="Кажется, мы вышли за орбиту"
-                    action={
-                      <Link className="btn" to="/">
-                        На главную
-                      </Link>
-                    }
-                  >
-                    Этой страницы нет. Координаты главной всё ещё на месте.
-                  </Empty>
-                }
-              />
-            </Route>
-          </Routes>
-        </Suspense>
+        <CaptchaGate>
+          <Suspense fallback={<Loading />}>
+            <Routes>
+              <Route element={<Layout />}>
+                <Route index element={<Home />} />
+                {(['login', 'register', 'forgot', 'reset', 'verify-email'] as const).map((mode) => (
+                  <Route key={mode} path={mode} element={<Auth key={mode} mode={mode} />} />
+                ))}
+                <Route
+                  path="chat"
+                  element={
+                    <Guard>
+                      <Chat />
+                    </Guard>
+                  }
+                />
+                <Route
+                  path="account"
+                  element={
+                    <Guard>
+                      <Account />
+                    </Guard>
+                  }
+                />
+                <Route
+                  path="admin"
+                  element={
+                    <Guard admin>
+                      <Admin />
+                    </Guard>
+                  }
+                />
+                <Route
+                  path="images"
+                  element={
+                    <Guard>
+                      <Images />
+                    </Guard>
+                  }
+                />
+                <Route path="setup" element={<Setup />} />
+                <Route path="about" element={<About />} />
+                <Route
+                  path="*"
+                  element={
+                    <Empty
+                      title="Кажется, мы вышли за орбиту"
+                      action={
+                        <Link className="btn" to="/">
+                          На главную
+                        </Link>
+                      }
+                    >
+                      Этой страницы нет. Координаты главной всё ещё на месте.
+                    </Empty>
+                  }
+                />
+              </Route>
+            </Routes>
+          </Suspense>
+        </CaptchaGate>
       </Provider>
     </BrowserRouter>
   );

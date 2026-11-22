@@ -1,10 +1,9 @@
 import nodemailer from 'nodemailer';
 import type { Config } from './config.js';
-export interface Mailer {
-  ready: boolean;
-  sendReset(email: string, url: string): Promise<void>;
-}
+import { createApiMailer, mailContent, type Mailer } from './mail-api.js';
+export type { Mailer } from './mail-api.js';
 export function createMailer(c: Config): Mailer {
+  if (c.mailApiKey) return createApiMailer(c.mailApiKey, c.smtp.from);
   const ready = !!(c.smtp.host && c.smtp.from);
   const transport = ready
     ? nodemailer.createTransport({
@@ -24,9 +23,12 @@ export function createMailer(c: Config): Mailer {
       await transport.sendMail({
         from: c.smtp.from,
         to: email,
-        subject: 'Hellar AI — восстановление доступа',
-        text: `Запрошено восстановление пароля Hellar AI. Ссылка действует 30 минут:\n${url}\n\nЕсли это не ты, проигнорируй письмо. Не пересылай эту ссылку.`,
+        ...mailContent('reset', url),
       });
+    },
+    async sendVerification(email, url) {
+      if (!transport) throw Error('MAIL_NOT_CONFIGURED');
+      await transport.sendMail({ from: c.smtp.from, to: email, ...mailContent('verify', url) });
     },
   };
 }

@@ -1,21 +1,30 @@
 import { useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { ArrowRight, ShieldCheck } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 import { post, setCsrf } from '../api';
 import { useApp } from '../context';
+import Turnstile from '../components/Turnstile';
 import { Button, ErrorBox, Loading, Planet } from '../components/ui';
-export default function Auth({ mode }: { mode: 'login' | 'register' | 'forgot' | 'reset' }) {
-  const { user, loading, refresh, status } = useApp(),
+export default function Auth({
+  mode,
+}: {
+  mode: 'login' | 'register' | 'forgot' | 'reset' | 'verify-email';
+}) {
+  const { user, loading, refresh, status, emailLinkToken } = useApp(),
     navigate = useNavigate();
   const [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
-    [done, setDone] = useState('');
-  const [resetToken] = useState(() => (mode === 'reset' ? location.hash.slice(1) : ''));
+    [done, setDone] = useState(''),
+    [captchaToken, setCaptchaToken] = useState(''),
+    [captchaAttempt, setCaptchaAttempt] = useState(0);
+  const isLink = mode === 'reset' || mode === 'verify-email';
+  const needsCaptcha = (mode === 'register' || mode === 'forgot') && !!status?.captchaRequired;
   const titles = {
     login: 'С возвращением',
     register: 'Твоя вселенная ждёт',
     forgot: 'Вернём доступ',
     reset: 'Новый пароль',
+    'verify-email': 'Подтверди почту и задай пароль',
   };
   if (loading) return <Loading />;
   if (user && (mode === 'login' || mode === 'register')) return <Navigate to="/chat" replace />;
@@ -25,10 +34,11 @@ export default function Auth({ mode }: { mode: 'login' | 'register' | 'forgot' |
     setError('');
     const b = Object.fromEntries(new FormData(e.currentTarget));
     try {
-      if (mode === 'reset') b.token = resetToken;
+      if (isLink) b.token = emailLinkToken;
+      if (needsCaptcha) b.captchaToken = captchaToken;
       const r = await post('/auth/' + mode, b);
       if (r.csrf) setCsrf(r.csrf);
-      if (mode === 'forgot') setDone(r.message);
+      if (mode === 'forgot' || mode === 'register') setDone(r.message);
       else if (mode === 'reset') {
         history.replaceState(null, '', location.pathname);
         await refresh();
@@ -41,6 +51,10 @@ export default function Auth({ mode }: { mode: 'login' | 'register' | 'forgot' |
       setError((e as Error).message);
     } finally {
       setBusy(false);
+      if (needsCaptcha) {
+        setCaptchaToken('');
+        setCaptchaAttempt((x) => x + 1);
+      }
     }
   }
   return (
@@ -71,7 +85,7 @@ export default function Auth({ mode }: { mode: 'login' | 'register' | 'forgot' |
           <div className="success-box" role="status">
             <p>{done}</p>
             <Link className="text-link" to="/login">
-              Перейти ко входу →
+              Перейти ко входу
             </Link>
           </div>
         ) : (
@@ -102,7 +116,7 @@ export default function Auth({ mode }: { mode: 'login' | 'register' | 'forgot' |
                 </label>
               </>
             )}
-            {mode !== 'reset' && (
+            {!isLink && (
               <label>
                 Электронная почта
                 <input
@@ -115,7 +129,7 @@ export default function Auth({ mode }: { mode: 'login' | 'register' | 'forgot' |
                 />
               </label>
             )}
-            {mode !== 'forgot' && (
+            {(mode === 'login' || isLink) && (
               <label>
                 Пароль
                 <input
@@ -129,7 +143,7 @@ export default function Auth({ mode }: { mode: 'login' | 'register' | 'forgot' |
                 />
               </label>
             )}
-            {(mode === 'register' || mode === 'reset') && (
+            {isLink && (
               <label>
                 Повтори пароль
                 <input
@@ -142,21 +156,46 @@ export default function Auth({ mode }: { mode: 'login' | 'register' | 'forgot' |
                 />
               </label>
             )}
-            {mode === 'forgot' && status && !status.mailReady && (
+            {(mode === 'forgot' || mode === 'register') && status && !status.mailReady && (
               <p className="notice">
                 Почтовая отправка пока не настроена владельцем. Письмо сейчас отправить не
                 получится.
               </p>
             )}
-            <Button busy={busy}>
+            {mode === 'register' && (
+              <p className="notice">
+                Сначала подтвердим твою почту. Пароль ты задашь по ссылке из письма. Аккаунт
+                появится только после этого.
+              </p>
+            )}
+            {isLink && !emailLinkToken && (
+              <ErrorBox message="Ссылка неполная. Открой её заново из письма или запроси новое письмо." />
+            )}
+            {needsCaptcha && status && (
+              <Turnstile
+                key={captchaAttempt}
+                siteKey={status.turnstileSiteKey}
+                action={mode}
+                onToken={setCaptchaToken}
+              />
+            )}
+            <Button
+              busy={busy}
+              disabled={
+                (needsCaptcha && !captchaToken) ||
+                (isLink && !emailLinkToken) ||
+                ((mode === 'register' || mode === 'forgot') && !status?.mailReady)
+              }
+            >
               {mode === 'login'
                 ? 'Войти'
                 : mode === 'register'
-                  ? 'Начать путешествие'
+                  ? 'Подтвердить почту'
                   : mode === 'forgot'
                     ? 'Получить ссылку'
-                    : 'Сохранить пароль'}
-              <ArrowRight size={17} />
+                    : mode === 'verify-email'
+                      ? 'Создать аккаунт'
+                      : 'Сохранить пароль'}
             </Button>
           </form>
         )}
@@ -164,10 +203,10 @@ export default function Auth({ mode }: { mode: 'login' | 'register' | 'forgot' |
           {mode === 'login' ? (
             <>
               <Link to="/forgot">Забыл пароль?</Link>
-              <Link to="/register">Есть приглашение →</Link>
+              <Link to="/register">Есть приглашение</Link>
             </>
           ) : (
-            <Link to="/login">Уже есть аккаунт? Войти →</Link>
+            <Link to="/login">Уже есть аккаунт? Войти</Link>
           )}
         </div>
       </div>

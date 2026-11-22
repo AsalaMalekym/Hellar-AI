@@ -18,6 +18,8 @@ export type Config = {
   contextChars: number;
   aiTimeout: number;
   imageTimeout: number;
+  mailApiKey: string;
+  captcha: { required: boolean; siteKey: string; secretKey: string };
   smtp: { host: string; port: number; secure: boolean; user: string; pass: string; from: string };
 };
 const num = (v: string | undefined, d: number) => {
@@ -70,6 +72,13 @@ export function config(): Config {
     contextChars: num(process.env.MAX_CONTEXT_CHARS, 48000),
     aiTimeout: num(process.env.AI_TIMEOUT_MS, 90000),
     imageTimeout: num(process.env.IMAGE_TIMEOUT_MS, 180000),
+    mailApiKey: process.env.RESEND_API_KEY || '',
+    captcha: {
+      required:
+        production || !!process.env.TURNSTILE_SITE_KEY || !!process.env.TURNSTILE_SECRET_KEY,
+      siteKey: process.env.TURNSTILE_SITE_KEY || '',
+      secretKey: process.env.TURNSTILE_SECRET_KEY || '',
+    },
     smtp: {
       host: process.env.SMTP_HOST || '',
       port: num(process.env.SMTP_PORT, 587),

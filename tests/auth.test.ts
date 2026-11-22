@@ -80,6 +80,7 @@ test('password reset single use and session invalidation, unavailable SMTP expli
     {
       mailer: {
         ready: true,
+        async sendVerification() {},
         async sendReset(_email, url) {
           link = url;
         },
@@ -111,6 +112,7 @@ test('password reset single use and session invalidation, unavailable SMTP expli
     {
       mailer: {
         ready: false,
+        async sendVerification() { throw Error('must not send'); },
         async sendReset() {
           throw Error('must not send');
         },
@@ -138,8 +140,8 @@ test('parallel redemption grants exactly one account; login limit enforced', asy
     const invitation = f.seedInvite();
     const body = { name: 'Тест', password: PASSWORD, confirmPassword: PASSWORD, invitation };
     const result = await Promise.all([
-      a.request('POST', '/auth/register', { ...body, email: 'a@example.com' }),
-      b.request('POST', '/auth/register', { ...body, email: 'b@example.com' }),
+      a.register('a@example.com', invitation),
+      b.register('b@example.com', invitation),
     ]);
     assert.deepEqual(result.map((x) => x.statusCode).sort(), [200, 400]);
     const anon = f.client();

@@ -12,6 +12,8 @@ type State = {
   status: Status | null;
   loading: boolean;
   error: string;
+  statusError: string;
+  emailLinkToken: string;
   refresh: () => Promise<void>;
   notify: (s: string) => void;
 };
@@ -21,7 +23,14 @@ export function Provider({ children }: { children: ReactNode }) {
     [status, setStatus] = useState<Status | null>(null),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(''),
-    [toast, setToast] = useState('');
+    [toast, setToast] = useState(''),
+    [statusError, setStatusError] = useState('');
+  const [emailLinkToken] = useState(() =>
+    ['/reset', '/verify-email'].includes(location.pathname) ? location.hash.slice(1) : '',
+  );
+  useEffect(() => {
+    if (emailLinkToken) history.replaceState(null, '', location.pathname + location.search);
+  }, [emailLinkToken]);
   async function refresh() {
     try {
       const data = await me();
@@ -38,7 +47,7 @@ export function Provider({ children }: { children: ReactNode }) {
     void refresh();
     api('/status')
       .then(setStatus)
-      .catch(() => {});
+      .catch((e) => setStatusError((e as Error).message));
   }, []);
   useEffect(() => {
     if (!toast) return;
@@ -49,7 +58,18 @@ export function Provider({ children }: { children: ReactNode }) {
     document.documentElement.dataset.motion = user?.settings?.motion === false ? 'reduced' : 'full';
   }, [user]);
   return (
-    <Ctx.Provider value={{ user, status, loading, error, refresh, notify: setToast }}>
+    <Ctx.Provider
+      value={{
+        user,
+        status,
+        loading,
+        error,
+        statusError,
+        emailLinkToken,
+        refresh,
+        notify: setToast,
+      }}
+    >
       {children}
       {toast && (
         <div className="toast" role="status">

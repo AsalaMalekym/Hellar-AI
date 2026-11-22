@@ -1,14 +1,17 @@
 import schema from '../migrations/001_initial.sql';
+import emailCaptcha from '../migrations/002_email_captcha.sql';
 // One shared object preserves the original application's synchronous transactions.
 export class Store {
   constructor(private storage: DurableObjectStorage) {
     storage.sql.exec('PRAGMA foreign_keys=ON');
     storage.sql.exec('CREATE TABLE IF NOT EXISTS migrations(name TEXT PRIMARY KEY,applied_at INTEGER NOT NULL)');
-    if (!this.get('SELECT name FROM migrations WHERE name=?', '001_initial.sql')) {
-      this.tx(() => {
-        storage.sql.exec(schema);
-        this.run('INSERT INTO migrations VALUES(?,?)', '001_initial.sql', Date.now());
-      });
+    for (const [name, sql] of [['001_initial.sql', schema], ['002_email_captcha.sql', emailCaptcha]]) {
+      if (!this.get('SELECT name FROM migrations WHERE name=?', name)) {
+        this.tx(() => {
+          storage.sql.exec(sql);
+          this.run('INSERT INTO migrations VALUES(?,?)', name, Date.now());
+        });
+      }
     }
   }
   get<T = any>(sql: string, ...values: any[]): T | undefined { return this.all<T>(sql, ...values)[0]; }

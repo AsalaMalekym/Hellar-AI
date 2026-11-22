@@ -9,6 +9,7 @@ import { ZodError } from 'zod';
 import { config, type Config } from './config.js';
 import { Store } from './db.js';
 import { id, token, digest, equal, HttpError, rate } from './security.js';
+import { createCaptcha } from './captcha.js';
 import { authRoutes } from './auth.js';
 import { createMailer, type Mailer } from './mail.js';
 import type { UserRow, Services, Session } from './types.js';
@@ -20,6 +21,7 @@ import { profileRoutes } from './profile.js';
 import { LocalStorage, collectFiles, type FileStorage } from './storage.js';
 export type BuildOptions = {
   mailer?: Mailer;
+  securityFetch?: typeof fetch;
   logger?: boolean;
   storage?: FileStorage;
   ai?: AIProvider;
@@ -61,10 +63,11 @@ export async function buildApp(c: Config = config(), options: BuildOptions = {})
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
+        scriptSrc: ["'self'", 'https://challenges.cloudflare.com'],
+        frameSrc: ['https://challenges.cloudflare.com'],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", 'blob:', 'data:'],
-        connectSrc: ["'self'"],
+        connectSrc: ["'self'", 'https://challenges.cloudflare.com'],
         objectSrc: ["'none'"],
         frameAncestors: ["'none'"],
         baseUri: ["'self'"],
@@ -129,6 +132,8 @@ export async function buildApp(c: Config = config(), options: BuildOptions = {})
       });
     },
   };
+  const captcha = createCaptcha(s, options.securityFetch);
+  captcha.routes(app);
   app.addHook('onRequest', async (r, p) => {
     p.header('Cache-Control', 'no-store');
     rate(db, 'all:' + r.ip, 240, 60000);
@@ -147,6 +152,7 @@ export async function buildApp(c: Config = config(), options: BuildOptions = {})
         }
       }
     }
+    captcha.guard(r);
     if (!['GET', 'HEAD', 'OPTIONS'].includes(r.method)) {
       if (r.headers.origin !== c.origin)
         throw new HttpError(403, 'Источник запроса не разрешён.', 'CSRF_REJECTED');
@@ -181,12 +187,15 @@ export async function buildApp(c: Config = config(), options: BuildOptions = {})
     chatReady: ai.ready,
     imageReady: ai.ready,
     mailReady: mailer.ready,
+    captchaRequired: captcha.required,
+    captchaReady: captcha.ready,
+    turnstileSiteKey: captcha.ready ? c.captcha.siteKey : '',
     chatModels: c.chatModels,
     imageModel: c.imageModel,
     imageSizes: c.imageSizes,
     limits: { chat: c.chatLimit, image: c.imageLimit },
   }));
-  await authRoutes(app, s, mailer);
+  await authRoutes(app, s, mailer, captcha);
   const storage = options.storage || new LocalStorage(c.storagePath);
   await collectFiles(db, storage);
   await profileRoutes(app, s, storage);

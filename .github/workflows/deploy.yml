@@ -16,6 +16,10 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       HELLAR_APP_ORIGIN: ${{ vars.HELLAR_APP_ORIGIN }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      MAIL_FROM: ${{ secrets.MAIL_FROM }}
+      TURNSTILE_SITE_KEY: ${{ secrets.TURNSTILE_SITE_KEY }}
+      TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
       WRANGLER_SEND_METRICS: 'false'
     steps:
       - uses: actions/checkout@v4
@@ -27,6 +31,13 @@ jobs:
         run: |
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Set CLOUDFLARE_ACCOUNT_ID in GitHub Secrets'; exit 1; }
           test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Set CLOUDFLARE_API_TOKEN in GitHub Secrets'; exit 1; }
+      - name: Check email and captcha settings
+        run: |
+          for setting in RESEND_API_KEY MAIL_FROM TURNSTILE_SITE_KEY TURNSTILE_SECRET_KEY; do
+            test -n "${!setting}" || { echo "Add $setting to repository Actions secrets before deploying email and captcha"; exit 1; }
+          done
+          case "$TURNSTILE_SITE_KEY" in 1x*|2x*|3x*) echo 'Use a production Turnstile site key'; exit 1;; esac
+          case "$TURNSTILE_SECRET_KEY" in 1x*|2x*|3x*) echo 'Use a production Turnstile secret key'; exit 1;; esac
       - name: Determine site address
         run: node scripts/resolve-cloudflare-origin.mjs
       - run: npm ci

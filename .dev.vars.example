@@ -4,3 +4,9 @@ COOKIE_SECURE=false
 # Generate a private value with: node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 SETUP_TOKEN=
 OPENAI_API_KEY=
+
+# Real mail requires a verified sender. Leave captcha keys empty only for local dev.
+RESEND_API_KEY=
+MAIL_FROM=
+TURNSTILE_SITE_KEY=
+TURNSTILE_SECRET_KEY=
